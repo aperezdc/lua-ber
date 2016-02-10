@@ -1,0 +1,5 @@
+Simple Basic Encoding Rules (BER) of Abstract Syntax
+Notation One (ASN.1) implementation as library for Lua.
+
+--
+Nodir Temirhodzhaev, <tnodir@mail.ru>
