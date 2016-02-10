@@ -53,11 +53,11 @@ oid2str (lua_State *L)
 #define OID_STRSIZE	32
     char oid[OID_STRSIZE];
     unsigned int num;
-    unsigned char sub, len, oidi = 0;
-    const char *oidp = lua_tostring (L, -1);
+    unsigned char sub, oidi = 0;
+    size_t len = 0;
+    const char *oidp = lua_tolstring (L, -1, &len);
 
     if (!oidp) return 0;
-    len = lua_strlen (L, -1);
     num = *oidp++;
     sub = num / 40;
     if (sub > 2) sub = 2;

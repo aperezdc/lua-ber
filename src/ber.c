@@ -60,13 +60,15 @@ ber_encstr (struct bers *bs, int pad)
     struct ber *b = bs->top;
     int len;
     unsigned char chunk = b->opt & (BER_MORE | BER_INCOMPL);
+    size_t string_len = 0;
+    const char *string_ptr = lua_tolstring(bs->L, -1, &string_len);
 
     if (chunk & BER_MORE) {
 	len = b->v.size;
 	b->opt &= ~BER_MORE;
     } else {
 	int lenpad;
-	len = lua_strlen (bs->L, -1);
+	len = (int) string_len;
 	if (chunk) len -= b->len;
 	else b->len = 0;
 	lenpad = len + pad;
@@ -130,7 +132,7 @@ ber_encstr (struct bers *bs, int pad)
 	}
     }
     /* copy (sub)string */
-    memcpy (bs->bp, lua_tostring (bs->L, -1) + b->len, len);
+    memcpy (bs->bp, string_ptr + b->len, len);
     bs->bp += len;
 
     if (b->opt & (BER_MORE | BER_INCOMPL)) {
@@ -171,10 +173,11 @@ ber_oid (struct bers *bs, int len, unsigned char opt)
 	lua_pushlstring (bs->L, (char *) bs->bp, len);
 	bs->bp += len;
     } else {
-	len = lua_strlen (bs->L, -1);
-	*bs->bp++ = len;
-	memcpy (bs->bp, lua_tostring (bs->L, -1), len);
-	bs->bp += len;
+	size_t slen = 0;
+	const char *s = lua_tolstring(bs->L, -1, &slen);
+	*bs->bp++ = slen;
+	memcpy (bs->bp, s, slen);
+	bs->bp += slen;
     }
     return 0;
 }

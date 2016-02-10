@@ -61,7 +61,7 @@ event_loop ()
     } while (i == BER_INCOMPL);
     lua_rawset (bs.L, LUA_GLOBALSINDEX);
 
-    lua_dofile (L, luafile);
+    luaL_dofile (L, luafile);
     lua_settop (L, 0);
 
     bs.endp = bs.buf + BUF_SIZ;

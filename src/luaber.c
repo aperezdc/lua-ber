@@ -5,10 +5,8 @@
 #include <stdlib.h>
 
 #include <lauxlib.h>
-#include <lualib.h>
+#include <lua.h>
 
-#include <luaerr.h>
-#include "luaber.h"
 #include "ber.h"
 #include "ber_util.h"
 
@@ -56,24 +54,30 @@ lber_clear (lua_State *L)
 /*
  * Arguments: ber_udata, string
  * Returns: tail (string), table
+ *          nil, errcode
  */
 static int
 lber_decode (lua_State *L)
 {
     p_bers bs = lua_touserdata (L, 1); /* BERHANDLE */
-    void *strp = (void *) luaL_checkstring (L, 2);
+    void *strp = NULL;
+    size_t str_len;
     jmp_buf jb;
     unsigned char c;
     int res;
 
+    luaL_checktype (L, 2, LUA_TSTRING);
+    strp = (void *) lua_tolstring (L, 2, &str_len);
+
     bs->jb = &jb;
     bs->bp = bs->buf = strp;
-    bs->endp = (unsigned char *) strp + lua_strlen (L, 2);
+    bs->endp = (unsigned char *) strp + str_len;
     res = setjmp (jb);
     if (!res) c = ber_decode (bs);
     else {
-	err_setno (L, res);
-	return 0;
+	lua_pushnil (L);
+	lua_pushinteger (L, res);
+	return 2;
     }
     /* tail */
     res = bs->endp - bs->bp;
@@ -90,6 +94,7 @@ lber_decode (lua_State *L)
 /*
  * Arguments: ber_udata, table
  * Returns: string, [boolean (complete?)]
+ *          nil, errcode
  */
 static int
 lber_encode (lua_State *L)
@@ -113,10 +118,11 @@ lber_encode (lua_State *L)
 	unsigned char c = ber_encode (bs);
 	lua_pushlstring (L, (char *) buffer, bs->bp - buffer);
 	lua_pushboolean (L, !c);
-	return 2;
+    } else {
+        lua_pushnil (L);
+        lua_pushinteger (L, res);
     }
-    err_setno (L, res);
-    return 0;
+    return 2;
 }
 
 /*
@@ -135,19 +141,23 @@ lodr_new (lua_State *L)
 /*
  * Arguments: odr_udata, string
  * Returns: boolean
+ *          nil, errcode
  */
 static int
 lodr_set (lua_State *L)
 {
     p_mmodr mo = lua_touserdata (L, 1); /* ODRHANDLE */
-    const char *str = luaL_checkstring (L, 2);
+    size_t str_len = 0;
+    const char *str = luaL_checklstring (L, 2, &str_len);
 
-    if (!mmodr_set (mo, str, lua_strlen (L, 2))) {
+    if (!mmodr_set (mo, str, str_len)) {
 	lua_pushboolean (L, 1);
 	return 1;
+    } else {
+        lua_pushnil (L);
+        lua_pushinteger (L, BER_ERRODR);
+        return 2;
     }
-    err_setno (L, BER_ERRODR);
-    return 0;
 }
 
 /*
@@ -172,20 +182,22 @@ lodr_names (lua_State *L)
 /*
  * Arguments: odr_udata, oid
  * Returns: string
+ *          nil, errcode
  */
 static int
 lodr_oid2name (lua_State *L)
 {
     p_mmodr mo = lua_touserdata (L, 1); /* ODRHANDLE */
-    const char *oidp = luaL_checkstring (L, 2);
-    size_t len = lua_strlen (L, 2);
+    size_t len = 0;
+    const char *oidp = luaL_checklstring (L, 2, &len);
     unsigned char oid[OIDSIZ];
     struct module_id *mid;
     int res;
 
     if (len > OIDSIZ - 1) {
-	err_setno (L, BER_ERROID);
-	return 0;
+        lua_pushnil (L);
+        lua_pushinteger (L, BER_ERROID);
+	return 2;
     }
     memcpy (oid + 1, oidp, oid[0] = len++);
     /* binary search of module by oid */
@@ -215,13 +227,13 @@ lodr_oid2name (lua_State *L)
 static int
 lber_strerror (lua_State *L)
 {
-    int err = lua_gettop (L) ? (int) lua_tonumber (L, 1) : err_getno (L);
+    int err = luaL_checkinteger (L, 1);
     lua_pushstring (L, ber_errstr (err));
     return 1;
 }
 
 
-static luaL_reg odrmeth[] = {
+static luaL_Reg odrmeth[] = {
     {"set",		lodr_set},
     {"ber",		lber_ber},
     {"names",		lodr_names},
@@ -229,14 +241,14 @@ static luaL_reg odrmeth[] = {
     {NULL, NULL}
 };
 
-static luaL_reg bermeth[] = {
+static luaL_Reg bermeth[] = {
     {"clear",		lber_clear},
     {"decode",		lber_decode},
     {"encode",  	lber_encode},
     {NULL, NULL}
 };
 
-static luaL_reg berlib[] = {
+static luaL_Reg berlib[] = {
     {"odr",		lodr_new},
     {"oid2str",		oid2str},
     {"str2oid",		str2oid},
@@ -246,6 +258,17 @@ static luaL_reg berlib[] = {
     {NULL, NULL}
 };
 
+
+static void
+register_functions (lua_State *L, const luaL_Reg *l)
+{
+    for (; l->name; l++) {
+        lua_pushcfunction (L, l->func);
+        lua_setfield (L, -2, l->name);
+    }
+}
+
+
 static void
 createmeta (lua_State *L)
 {
@@ -253,20 +276,23 @@ createmeta (lua_State *L)
     lua_pushliteral (L, "__index");
     lua_pushvalue (L, -2);  /* push metatable */
     lua_rawset (L, -3);  /* metatable.__index = metatable */
-    luaL_openlib (L, NULL, odrmeth, 0);
+    register_functions (L, odrmeth);
+    lua_pop (L, 1);
 
     luaL_newmetatable (L, BERHANDLE);
     lua_pushliteral (L, "__index");
     lua_pushvalue (L, -2);  /* push metatable */
     lua_rawset (L, -3);  /* metatable.__index = metatable */
-    luaL_openlib (L, NULL, bermeth, 0);
+    register_functions (L, bermeth);
+    lua_pop (L, 1);
 }
 
 /* Open BER library */
 LUALIB_API int
 luaopen_ber (lua_State *L)
 {
-    luaL_openlib (L, LUA_BERLIBNAME, berlib, 0);
+    lua_newtable (L);
+    register_functions (L, berlib);
     createmeta (L);
-    return 0;
+    return 1;
 }
