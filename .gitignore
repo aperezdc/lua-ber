@@ -1,0 +1,5 @@
+*.o
+/ber.so
+/asn2odr
+/odr2pdu
+/*.rock
