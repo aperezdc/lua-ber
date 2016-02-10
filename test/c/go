@@ -1,0 +1,5 @@
+#./tst -f../z39/z3950.odr -lz.lua <../tmp/z.ber >/tmp/berout; exit
+for BER in ../tmp/*.ber; do
+    echo $BER
+    ./tst -f../z39/z3950.odr -lz.lua <$BER >/tmp/berout
+done
