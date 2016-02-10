@@ -42,7 +42,11 @@ event_loop ()
 
     bs.L = L;
     bs.bp = bs.buf = buffer;
+
+#if LUA_VERSION_NUM < 503
     lua_pushstring (bs.L, "QI");
+#endif
+
     do {
 	i = read (0, bs.bp, BUF_SIZ - tl);
 	if (!i) return;
@@ -59,14 +63,25 @@ event_loop ()
 	    bs.bp = bs.buf;
 	}
     } while (i == BER_INCOMPL);
+
+#if LUA_VERSION_NUM >= 503
+    lua_setglobal (bs.L, "QI");
+#else
     lua_rawset (bs.L, LUA_GLOBALSINDEX);
+#endif
 
     luaL_dofile (L, luafile);
     lua_settop (L, 0);
 
     bs.endp = bs.buf + BUF_SIZ;
+
+#if LUA_VERSION_NUM >= 503
+    lua_getglobal(bs.L, "QO");
+#else
     lua_pushstring (bs.L, "QO");
     lua_rawget (bs.L, LUA_GLOBALSINDEX);
+#endif
+
     while ((i = ber_encode (&bs)) == BER_INCOMPL) {
 	if (!(i = write (1, bs.buf, bs.bp - bs.buf)))
 	    return;
@@ -79,10 +94,9 @@ event_loop ()
 static void
 lua_init ()
 {
-    L = lua_open ();
+    L = luaL_newstate ();
     if (!L) err_quit ("Cannot init Lua");
-    luaopen_base (L);
-    luaopen_string (L);
+    luaL_openlibs (L);
     lua_settop (L, 0);
 }
 

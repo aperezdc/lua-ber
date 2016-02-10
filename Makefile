@@ -74,3 +74,26 @@ install: all
 	install -Dm755 odr2pdu $(DESTDIR)$(INST_BINDIR)/odr2pdu
 
 .PHONY: install
+
+
+TEST_ASN := $(filter-out test/useful.asn,$(wildcard test/*.asn))
+TEST_BER := $(wildcard test/*.ber)
+
+test/z3950.odr: test/useful.asn $(TEST_ASN) | asn2odr
+	./asn2odr test/useful.asn -s $(TEST_ASN)
+	mv asn.odr $@
+
+test/z3950.pdu: test/z3950.odr | odr2pdu
+	./odr2pdu $< > $@
+
+test/check: CPPFLAGS += -Isrc
+test/check: test/check.o $(BER_OBJS)
+	$(CC) -o $@ $(CFLAGS) $^ -llua
+
+check: test/z3950.odr test/check test/check.lua
+	@for i in $(TEST_BER) ; do \
+		echo "=== ./test/check -ftest/z3950.odr -ltest/check.lua < $$i ===" ; \
+		./test/check -ftest/z3950.odr -ltest/check.lua < $$i ; \
+	done
+
+.PHONY: check
